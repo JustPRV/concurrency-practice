@@ -1,10 +1,7 @@
 package problem.classical
 
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.joinAll
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.*
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -46,11 +43,11 @@ class ValueHolder {
 class Reader(private val id: Int, private val valueHolder: ValueHolder) {
     private val random = Random()
 
-    suspend fun read() {
+    fun read() {
         for (i in 0..REPEAT) {
             val value = valueHolder.getValue((WRITERS + 1).toLong(), TimeUnit.SECONDS)
             println("Reader $id: $value")
-            delay(random.nextInt(1000).toLong())
+            Thread.sleep(random.nextInt(1000).toLong())
         }
     }
 }
@@ -58,22 +55,22 @@ class Reader(private val id: Int, private val valueHolder: ValueHolder) {
 class Writer(private val id: Int, private val valueHolder: ValueHolder) {
     private val random = Random()
 
-    suspend fun write() {
+    fun write() {
         for (i in 0..REPEAT) {
             val v = "$id-$i"
             valueHolder.setValue(v, (READERS + 1).toLong(), TimeUnit.SECONDS)
             println("Writer $id: $v")
-            delay(random.nextInt(1000).toLong())
+            Thread.sleep(random.nextInt(1000).toLong())
         }
     }
 }
 
 fun main() {
-    runBlocking {
-        val valueHolder = ValueHolder()
-        listOf(
-            (0..READERS).map { i -> Reader(i, valueHolder) }.map { r -> launch { r.read() } },
-            (0..WRITERS).map { i -> Writer(i, valueHolder) }.map { w -> launch { w.write() } }
-        ).flatten().joinAll()
-    }
+    val threadPool = Executors.newFixedThreadPool(READERS + WRITERS)
+    val valueHolder = ValueHolder()
+    (0..READERS).map { i -> Reader(i, valueHolder) }.map { r -> threadPool.submit { r.read() } }
+    (0..WRITERS).map { i -> Writer(i, valueHolder) }.map { w -> threadPool.submit { w.write() } }
+
+    threadPool.shutdown()
+    threadPool.awaitTermination(30, TimeUnit.SECONDS)
 }
